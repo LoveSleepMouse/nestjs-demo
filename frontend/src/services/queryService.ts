@@ -1,6 +1,6 @@
 import { httpMiddleware } from "../utils/httpMiddleware";
 
-export interface QueryOptions {
+export interface QueryOptionsValues {
   category?: string;
   status?: string;
   type?: string;
@@ -32,7 +32,7 @@ export const queryService = {
     return response.data;
   },
 
-  async search(options: QueryOptions): Promise<QueryResult[]> {
+  async search(options: QueryOptionsValues): Promise<QueryResult[]> {
     const response = await httpMiddleware.get("/query/search", {
       params: options,
     });

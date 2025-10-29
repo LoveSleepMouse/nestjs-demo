@@ -5,13 +5,9 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-import { authService } from "../services/authService";
+import { bffService, UserInfo } from "../services/bffService";
 
-interface User {
-  id: number;
-  username: string;
-  email: string;
-}
+interface User extends UserInfo {}
 
 interface AuthContextType {
   user: User | null;
@@ -42,10 +38,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (token) {
-      authService
-        .getProfile()
-        .then((userData) => {
-          setUser(userData);
+      bffService
+        .getUserProfile()
+        .then((response) => {
+          if (response.success) {
+            setUser(response.data);
+          } else {
+            localStorage.removeItem("token");
+          }
         })
         .catch(() => {
           localStorage.removeItem("token");
@@ -63,10 +63,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     password: string
   ): Promise<boolean> => {
     try {
-      const response = await authService.login(username, password);
-      if (response.access_token) {
-        localStorage.setItem("token", response.access_token);
-        setUser(response.user);
+      const response = await bffService.login(username, password);
+      if (response.success && response.data.token) {
+        localStorage.setItem("token", response.data.token);
+        setUser(response.data.user);
         return true;
       }
       return false;

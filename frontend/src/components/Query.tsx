@@ -1,50 +1,53 @@
 import React, { useState, useEffect } from "react";
-import {
-  queryService,
-  QueryOptions,
-  QueryResult,
-} from "../services/queryService";
+import { bffService, QueryOptions, QueryResult } from "../services/bffService";
+import { QueryOptionsValues } from "../services/queryService";
 
 const Query: React.FC = () => {
-  const [categories, setCategories] = useState<string[]>([]);
-  const [statuses, setStatuses] = useState<string[]>([]);
-  const [types, setTypes] = useState<string[]>([]);
-  const [results, setResults] = useState<QueryResult[]>([]);
+  const [queryOptions, setQueryOptions] = useState<QueryOptions | null>(null);
+  const [queryData, setQueryData] = useState<QueryResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [filters, setFilters] = useState<QueryOptions>({
-    category: "",
-    status: "",
-    type: "",
-  });
+  const [queryOptionsValues, setQueryOptionsValues] =
+    useState<QueryOptionsValues>({
+      category: "",
+      status: "",
+      type: "",
+    });
 
   useEffect(() => {
-    loadOptions();
-    loadResults();
+    loadQueryOptions();
+    loadQueryData();
   }, []);
 
-  const loadOptions = async () => {
-    try {
-      const [categoriesData, statusesData, typesData] = await Promise.all([
-        queryService.getCategories(),
-        queryService.getStatuses(),
-        queryService.getTypes(),
-      ]);
-      setCategories(categoriesData);
-      setStatuses(statusesData);
-      setTypes(typesData);
-    } catch (error) {
-      console.error("Failed to load options:", error);
-    }
-  };
-
-  const loadResults = async () => {
+  async function loadQueryData() {
     setLoading(true);
     setError("");
     try {
-      const data = await queryService.search(filters);
-      setResults(data);
+      const response = await bffService.getQueryData(queryOptionsValues);
+      if (response.success) {
+        setQueryData(response.data);
+      } else {
+        setError(response.message || "查询失败，请重试");
+      }
+    } catch (error) {
+      setError("查询失败，请重试");
+      console.error("Query error:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const loadQueryOptions = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await bffService.getQueryOptions();
+      if (response.success) {
+        setQueryOptions(response.data);
+      } else {
+        setError(response.message || "查询失败，请重试");
+      }
     } catch (error) {
       setError("查询失败，请重试");
       console.error("Query error:", error);
@@ -53,20 +56,21 @@ const Query: React.FC = () => {
     }
   };
 
-  const handleFilterChange = (key: keyof QueryOptions, value: string) => {
-    setFilters((prev) => ({
+  const handleFilterChange = (key: keyof QueryOptionsValues, value: string) => {
+    setQueryOptionsValues((prev) => ({
       ...prev,
       [key]: value,
+      page: 1, // 重置到第一页
     }));
   };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    loadResults();
+    loadQueryData();
   };
 
   const handleReset = () => {
-    setFilters({
+    setQueryOptionsValues({
       category: "",
       status: "",
       type: "",
@@ -74,15 +78,13 @@ const Query: React.FC = () => {
   };
 
   const handleTestData = () => {
-    queryService
-      .postTestData(100)
-      .then((res) => {
-        loadResults();
-      })
-      .catch((error: any) => {
-        console.error("Test data error:", error);
-        setError(`测试数据失败: ${error.message}`);
-      });
+    bffService.postTestData({ num: 100 }).then((response) => {
+      if (response.success) {
+        loadQueryData();
+      } else {
+        setError(response.message || "测试数据失败");
+      }
+    });
   };
 
   return (
@@ -101,11 +103,11 @@ const Query: React.FC = () => {
               <label htmlFor="category">分类:</label>
               <select
                 id="category"
-                value={filters.category}
+                value={queryOptionsValues.category}
                 onChange={(e) => handleFilterChange("category", e.target.value)}
               >
                 <option value="">全部</option>
-                {categories.map((category) => (
+                {queryOptions?.filters.categories.map((category) => (
                   <option key={category} value={category}>
                     {category}
                   </option>
@@ -117,11 +119,11 @@ const Query: React.FC = () => {
               <label htmlFor="status">状态:</label>
               <select
                 id="status"
-                value={filters.status}
+                value={queryOptionsValues.status}
                 onChange={(e) => handleFilterChange("status", e.target.value)}
               >
                 <option value="">全部</option>
-                {statuses.map((status) => (
+                {queryOptions?.filters.statuses.map((status) => (
                   <option key={status} value={status}>
                     {status}
                   </option>
@@ -133,11 +135,11 @@ const Query: React.FC = () => {
               <label htmlFor="type">类型:</label>
               <select
                 id="type"
-                value={filters.type}
+                value={queryOptionsValues.type}
                 onChange={(e) => handleFilterChange("type", e.target.value)}
               >
                 <option value="">全部</option>
-                {types.map((type) => (
+                {queryOptions?.filters.types.map((type) => (
                   <option key={type} value={type}>
                     {type}
                   </option>
@@ -171,43 +173,85 @@ const Query: React.FC = () => {
       {error && <div className="alert alert-danger">{error}</div>}
 
       <div className="card">
-        <h3>查询结果 ({results.length} 条记录)</h3>
         {loading ? (
           <div className="loading">查询中...</div>
-        ) : results.length === 0 ? (
+        ) : !queryData || queryData.length === 0 ? (
           <div className="empty-state">
             <h3>暂无数据</h3>
             <p>请调整查询条件后重试</p>
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>名称</th>
-                  <th>分类</th>
-                  <th>状态</th>
-                  <th>类型</th>
-                  <th>描述</th>
-                  <th>创建时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((result) => (
-                  <tr key={result.id}>
-                    <td>{result.id}</td>
-                    <td>{result.name}</td>
-                    <td>{result.category}</td>
-                    <td>{result.status}</td>
-                    <td>{result.type}</td>
-                    <td>{result.description}</td>
-                    <td>{result.createdAt}</td>
+          <>
+            <div style={{ overflowX: "auto" }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>名称</th>
+                    <th>分类</th>
+                    <th>状态</th>
+                    <th>类型</th>
+                    <th>优先级</th>
+                    <th>标签</th>
+                    <th>描述</th>
+                    <th>创建时间</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {queryData.map((result: QueryResult) => (
+                    <tr key={result.id}>
+                      <td>{result.id}</td>
+                      <td>{result.name}</td>
+                      <td>{result.category}</td>
+                      <td>{result.status}</td>
+                      <td>{result.type}</td>
+                      <td>
+                        <span
+                          style={{
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            backgroundColor:
+                              result.priority <= 2
+                                ? "#d4edda"
+                                : result.priority <= 3
+                                ? "#fff3cd"
+                                : "#f8d7da",
+                            color:
+                              result.priority <= 2
+                                ? "#155724"
+                                : result.priority <= 3
+                                ? "#856404"
+                                : "#721c24",
+                          }}
+                        >
+                          {result.priority}
+                        </span>
+                      </td>
+                      <td>
+                        {result.tags.map((tag, index) => (
+                          <span
+                            key={index}
+                            style={{
+                              display: "inline-block",
+                              margin: "1px",
+                              padding: "1px 4px",
+                              backgroundColor: "#e9ecef",
+                              borderRadius: "2px",
+                              fontSize: "12px",
+                            }}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </td>
+                      <td>{result.description}</td>
+                      <td>{result.createdAt}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
